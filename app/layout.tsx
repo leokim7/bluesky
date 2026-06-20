@@ -1,9 +1,6 @@
 import "./globals.css";
 import type { Metadata } from "next";
 
-export const dynamic = "force-dynamic";
-export const revalidate = 0;
-
 export const metadata: Metadata = {
   title: "bluesky · BlueMatrix Weather",
   description: "Interactive multi-model weather map powered by BlueMatrix L2 (ECMWF + GFS + Open-Meteo + Stormglass).",
