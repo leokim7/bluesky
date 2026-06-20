@@ -134,7 +134,8 @@ export function WindParticles({ map, hourOffset }: Props) {
       p.lng = rand(sw.lng, ne.lng);
       p.lat = rand(sw.lat, ne.lat);
       p.age = 0;
-      p.maxAge = rand(50, 150);
+      // Windy 스타일 — 자취가 더 길게 보이도록 maxAge 증가
+      p.maxAge = rand(80, 220);
     }
 
     function init() {
@@ -163,8 +164,8 @@ export function WindParticles({ map, hourOffset }: Props) {
       }
 
       for (const p of particles) {
-        const u = idwInterpolate(p.lng, p.lat, grid.map(g => ({ lng: g.lng, lat: g.lat, value: g.u })), 2, 1.5);
-        const v = idwInterpolate(p.lng, p.lat, grid.map(g => ({ lng: g.lng, lat: g.lat, value: g.v })), 2, 1.5);
+        const u = idwInterpolate(p.lng, p.lat, grid.map(g => ({ lng: g.lng, lat: g.lat, value: g.u })), 1.5, 8);
+        const v = idwInterpolate(p.lng, p.lat, grid.map(g => ({ lng: g.lng, lat: g.lat, value: g.v })), 1.5, 8);
 
         if (u === null || v === null) {
           spawn(p, bounds);
@@ -174,8 +175,11 @@ export function WindParticles({ map, hourOffset }: Props) {
         const oldLng = p.lng;
         const oldLat = p.lat;
 
-        // Scale: 0.0005 deg per m/s per frame ≈ 50m/frame at 1m/s
-        const scale = 0.005;
+        // Windy 스타일 — 풍속에 비례하되 시각적으로 자연스러운 흐름
+        // zoom-aware: 줌인하면 더 느리게 (지도 위 표현 일정)
+        const zoom = map.getZoom();
+        const zoomFactor = Math.pow(2, 5 - zoom); // zoom 5 기준 정규화
+        const scale = 0.0008 * zoomFactor;
         p.lng += u * scale;
         p.lat += v * scale;
         p.age++;

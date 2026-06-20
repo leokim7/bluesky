@@ -17,15 +17,21 @@ type Props = {
   hourOffset: number;
 };
 
-/** viewport 안에서 균등 격자 좌표 생성 — zoom-aware step (최대 100 포인트로 제한) */
+/** viewport 안에서 균등 격자 좌표 생성 — viewport 보다 약간 확장 + 자동 thinning */
 function makeGrid(bounds: mapboxgl.LngLatBounds, zoom: number): LngLat[] {
   // zoom 별 step: 줌인하면 더 촘촘, 줌아웃하면 듬성듬성
-  const stepDeg = zoom >= 7 ? 0.6 : zoom >= 5 ? 1.5 : 3.0;
+  const stepDeg = zoom >= 7 ? 0.6 : zoom >= 5 ? 1.2 : 2.5;
   const sw = bounds.getSouthWest();
   const ne = bounds.getNorthEast();
+  // viewport 가장자리 IDW 자연스럽게 보간되도록 1 step 만큼 확장
+  const pad = stepDeg;
+  const minLat = sw.lat - pad;
+  const maxLat = ne.lat + pad;
+  const minLng = sw.lng - pad;
+  const maxLng = ne.lng + pad;
   const pts: LngLat[] = [];
-  for (let lat = sw.lat; lat <= ne.lat; lat += stepDeg) {
-    for (let lng = sw.lng; lng <= ne.lng; lng += stepDeg) {
+  for (let lat = minLat; lat <= maxLat; lat += stepDeg) {
+    for (let lng = minLng; lng <= maxLng; lng += stepDeg) {
       pts.push({ lng, lat });
     }
   }
@@ -60,7 +66,7 @@ function renderToCanvas(
     for (let px = 0; px < width; px++) {
       const lng = sw.lng + (px / width) * lngRange;
       const lat = ne.lat - (py / height) * latRange;
-      const v = idwInterpolate(lng, lat, grid, 2, 1.5);
+      const v = idwInterpolate(lng, lat, grid, 1.5, 8);
       const idx = (py * width + px) * 4;
       if (v === null) {
         img.data[idx + 3] = 0;

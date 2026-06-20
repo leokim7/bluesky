@@ -40,8 +40,43 @@ export async function fetchWeatherPoint(
 }
 
 // ── 격자 (multi-coord) bulk ─────────────────────────
-// 여러 좌표를 병렬로 호출 (Pipeline 캐시 + L1 in-memory hit 활용)
+// 여러 좌표를 동시성 제한 + in-memory 캐시로 호출 (브라우저 ERR_INSUFFICIENT_RESOURCES 방지)
 export type GridPoint = LngLat & { value: number | null };
+
+const MAX_CONCURRENT = 6;     // 브라우저 connection limit 안전 마진
+const POINT_CACHE = new Map<string, unknown>();
+const CACHE_TTL_MS = 5 * 60 * 1000;
+const CACHE_TIMES = new Map<string, number>();
+
+function cacheKey(lat: number, lon: number, days: number) {
+  return `${lat.toFixed(3)}:${lon.toFixed(3)}:${days}`;
+}
+
+async function fetchWithCache(lat: number, lon: number, signal?: AbortSignal) {
+  const key = cacheKey(lat, lon, 7);
+  const now = Date.now();
+  const t = CACHE_TIMES.get(key) ?? 0;
+  if (POINT_CACHE.has(key) && now - t < CACHE_TTL_MS) {
+    return POINT_CACHE.get(key);
+  }
+  const r = await fetchWeatherPoint(lat, lon, { signal });
+  POINT_CACHE.set(key, r);
+  CACHE_TIMES.set(key, now);
+  return r;
+}
+
+async function pLimit<T>(items: T[], limit: number, worker: (item: T) => Promise<unknown>) {
+  const results: unknown[] = [];
+  let cursor = 0;
+  const runners = Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (cursor < items.length) {
+      const idx = cursor++;
+      results[idx] = await worker(items[idx]);
+    }
+  });
+  await Promise.all(runners);
+  return results;
+}
 
 export async function fetchGrid(
   coords: LngLat[],
@@ -49,14 +84,15 @@ export async function fetchGrid(
   hour: number,
   signal?: AbortSignal,
 ): Promise<GridPoint[]> {
-  const calls = coords.map(async (c) => {
+  const results = await pLimit(coords, MAX_CONCURRENT, async (c) => {
     try {
-      const r = await fetchWeatherPoint(c.lat, c.lng, { signal });
-      const d = r.data as {
-        current?: Record<string, unknown>;
-        hourly?: { time?: string[]; [k: string]: unknown };
+      const r = await fetchWithCache(c.lat, c.lng, signal) as {
+        data?: {
+          current?: Record<string, unknown>;
+          hourly?: { time?: string[]; [k: string]: unknown };
+        };
       };
-      // Hour=0 → current. hour > 0 → hourly[h] 추출
+      const d = r.data ?? {};
       let value: number | null = null;
       if (hour === 0 && d.current) {
         value = (d.current[variable] as number) ?? null;
@@ -69,7 +105,7 @@ export async function fetchGrid(
       return { ...c, value: null };
     }
   });
-  return Promise.all(calls);
+  return results as GridPoint[];
 }
 
 // ── Marine (Stormglass) ─────────────────────────────
