@@ -157,11 +157,11 @@ export function LayerRenderer({ map, layer, hourOffset }: Props) {
 
     load();
 
-    // moveend 가 너무 자주 발생 — 500ms debounce
+    // moveend 가 너무 자주 발생 — 800ms debounce (지도 이동 중 호출 절감)
     let debounceTimer: ReturnType<typeof setTimeout> | null = null;
     const onMoveEnd = () => {
       if (debounceTimer) clearTimeout(debounceTimer);
-      debounceTimer = setTimeout(() => load(), 500);
+      debounceTimer = setTimeout(() => load(), 800);
     };
     map.on("moveend", onMoveEnd);
 

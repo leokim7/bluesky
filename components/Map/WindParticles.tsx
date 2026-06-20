@@ -101,7 +101,7 @@ export function WindParticles({ map, hourOffset }: Props) {
     let debounce: ReturnType<typeof setTimeout> | null = null;
     const onMoveEnd = () => {
       if (debounce) clearTimeout(debounce);
-      debounce = setTimeout(load, 500);
+      debounce = setTimeout(load, 800);
     };
     map.on("moveend", onMoveEnd);
 
