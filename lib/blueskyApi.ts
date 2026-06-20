@@ -33,7 +33,6 @@ export async function fetchWeatherPoint(
   const res = await fetch(url, {
     headers: authHeaders(),
     signal: opts?.signal,
-    // @ts-expect-error Next.js fetch extension
     next: { revalidate: 300 },
   });
   if (!res.ok) throw new Error(`Pipeline /v1/weather ${res.status}`);
@@ -80,7 +79,6 @@ export async function fetchMarinePoint(
   signal?: AbortSignal,
 ) {
   const url = `${PIPELINE_URL}/v1/marine?lat=${lat.toFixed(4)}&lon=${lon.toFixed(4)}`;
-  // @ts-expect-error Next.js fetch extension
   const res = await fetch(url, { headers: authHeaders(), signal, next: { revalidate: 1800 } });
   if (!res.ok) throw new Error(`Pipeline /v1/marine ${res.status}`);
   return res.json();
@@ -93,7 +91,6 @@ export async function fetchEnsemblePoint(
   signal?: AbortSignal,
 ) {
   const url = `${PIPELINE_URL}/v1/ensemble?lat=${lat.toFixed(4)}&lon=${lon.toFixed(4)}`;
-  // @ts-expect-error Next.js fetch extension
   const res = await fetch(url, { headers: authHeaders(), signal, next: { revalidate: 21600 } });
   if (!res.ok) throw new Error(`Pipeline /v1/ensemble ${res.status}`);
   return res.json();
