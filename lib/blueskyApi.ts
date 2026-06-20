@@ -135,34 +135,131 @@ async function pLimit<T>(items: T[], limit: number, worker: (item: T) => Promise
   return results;
 }
 
+// ── Bulk multi-coord — 1 HTTP call for all coords ──────
+type BulkResult = {
+  source: string;
+  fetched_at: string;
+  count: number;
+  results: Array<{
+    lat: number;
+    lon: number;
+    data: {
+      current?: Record<string, unknown> | null;
+      hourly?: { time?: string[]; [k: string]: unknown } | null;
+    };
+  }>;
+  schema_version: string;
+};
+
+async function fetchBulk(
+  coords: LngLat[],
+  signal?: AbortSignal,
+): Promise<BulkResult["results"]> {
+  if (coords.length === 0) return [];
+  const lats = coords.map((c) => c.lat.toFixed(4)).join(",");
+  const lons = coords.map((c) => c.lng.toFixed(4)).join(",");
+  const url = `${PIPELINE_URL}/v1/weather/bulk?lats=${lats}&lons=${lons}&days=7&past_days=0`;
+  const res = await fetch(url, {
+    headers: authHeaders(),
+    signal,
+    next: { revalidate: 1800 },
+  });
+  if (!res.ok) throw new Error(`Pipeline /v1/weather/bulk ${res.status}`);
+  const j = (await res.json()) as BulkResult;
+  return j.results;
+}
+
 export async function fetchGrid(
   coords: LngLat[],
   variable: string,
   hour: number,
   signal?: AbortSignal,
 ): Promise<GridPoint[]> {
-  const results = await pLimit(coords, MAX_CONCURRENT, async (c) => {
-    try {
-      const r = await fetchWithCache(c.lat, c.lng, signal) as {
-        data?: {
-          current?: Record<string, unknown>;
-          hourly?: { time?: string[]; [k: string]: unknown };
-        };
-      };
-      const d = r.data ?? {};
+  // ── 캐시 hit 분리 (네트워크 미호출) ─────────
+  const hits: GridPoint[] = [];
+  const misses: { idx: number; coord: LngLat }[] = [];
+
+  coords.forEach((c, idx) => {
+    const key = cacheKey(c.lat, c.lng, 7);
+    const now = Date.now();
+    const t = CACHE_TIMES.get(key) ?? 0;
+    const ls = POINT_CACHE.has(key) && now - t < CACHE_TTL_MS
+      ? POINT_CACHE.get(key)
+      : hydrateFromLS(key);
+
+    if (ls) {
+      if (!POINT_CACHE.has(key)) {
+        POINT_CACHE.set(key, ls);
+        CACHE_TIMES.set(key, now);
+      }
+      const d = (ls as { data?: { current?: Record<string, unknown>; hourly?: { [k: string]: unknown } } }).data ?? {};
       let value: number | null = null;
       if (hour === 0 && d.current) {
         value = (d.current[variable] as number) ?? null;
       } else if (d.hourly && Array.isArray(d.hourly[variable])) {
-        const arr = d.hourly[variable] as number[];
-        value = arr[hour] ?? null;
+        value = (d.hourly[variable] as number[])[hour] ?? null;
       }
-      return { ...c, value };
-    } catch {
-      return { ...c, value: null };
+      hits.push({ ...c, value });
+    } else {
+      misses.push({ idx, coord: c });
     }
   });
-  return results as GridPoint[];
+
+  // ── miss 만 bulk 호출 (1 HTTP) ──────────
+  if (misses.length === 0) {
+    return coords.map((c, i) => hits.find((h) => h.lng === c.lng && h.lat === c.lat) ?? { ...c, value: null });
+  }
+
+  try {
+    const missCoords = misses.map((m) => m.coord);
+    const bulkRes = await fetchBulk(missCoords, signal);
+
+    // 각 응답을 캐시 + GridPoint 변환
+    const missResults: GridPoint[] = misses.map((m, i) => {
+      const r = bulkRes[i];
+      if (!r) return { ...m.coord, value: null };
+      const data = r.data ?? {};
+      // 캐시 — single point 응답 형태로 wrap
+      const wrapped = { data: { current: data.current ?? null, hourly: data.hourly ?? null } };
+      const key = cacheKey(m.coord.lat, m.coord.lng, 7);
+      POINT_CACHE.set(key, wrapped);
+      CACHE_TIMES.set(key, Date.now());
+      persistToLS(key, wrapped);
+
+      let value: number | null = null;
+      if (hour === 0 && data.current) {
+        value = (data.current[variable] as number) ?? null;
+      } else if (data.hourly && Array.isArray(data.hourly[variable])) {
+        value = (data.hourly[variable] as number[])[hour] ?? null;
+      }
+      return { ...m.coord, value };
+    });
+
+    // hits + misses 합쳐서 원래 순서 유지
+    return coords.map((c) => {
+      const h = hits.find((x) => x.lng === c.lng && x.lat === c.lat);
+      if (h) return h;
+      const m = missResults.find((x) => x.lng === c.lng && x.lat === c.lat);
+      return m ?? { ...c, value: null };
+    });
+  } catch {
+    // bulk 실패 → fallback to single-point with concurrency
+    const results = await pLimit(coords, MAX_CONCURRENT, async (c) => {
+      try {
+        const r = await fetchWithCache(c.lat, c.lng, signal) as {
+          data?: { current?: Record<string, unknown>; hourly?: { [k: string]: unknown } };
+        };
+        const d = r.data ?? {};
+        let value: number | null = null;
+        if (hour === 0 && d.current) value = (d.current[variable] as number) ?? null;
+        else if (d.hourly && Array.isArray(d.hourly[variable])) value = (d.hourly[variable] as number[])[hour] ?? null;
+        return { ...c, value };
+      } catch {
+        return { ...c, value: null };
+      }
+    });
+    return results as GridPoint[];
+  }
 }
 
 // ── Marine (Stormglass) ─────────────────────────────
