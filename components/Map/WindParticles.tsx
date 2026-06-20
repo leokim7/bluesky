@@ -60,20 +60,24 @@ export function WindParticles({ map, hourOffset }: Props) {
       if (!bounds) return;
       const sw = bounds.getSouthWest();
       const ne = bounds.getNorthEast();
+      const z = map.getZoom();
+      const step = z >= 7 ? 0.8 : z >= 5 ? 1.8 : 3.5;
       const pts: { lng: number; lat: number }[] = [];
-      const step = 0.6;
       for (let lat = sw.lat; lat <= ne.lat; lat += step) {
         for (let lng = sw.lng; lng <= ne.lng; lng += step) {
           pts.push({ lng, lat });
         }
       }
+      // Hard cap 60 포인트
+      const sampled = pts.length > 60 ? pts.filter((_, i) => i % Math.ceil(pts.length / 60) === 0) : pts;
+      // Wind 격자는 한 번 호출로 speed + direction 같이 받음 (캐시 활용)
       const [speedRes, dirRes] = await Promise.all([
-        fetchGrid(pts, "wind_speed_10m", hourOffset),
-        fetchGrid(pts, "wind_direction_10m", hourOffset),
+        fetchGrid(sampled, "wind_speed_10m", hourOffset),
+        fetchGrid(sampled, "wind_direction_10m", hourOffset),
       ]);
       if (!alive) return;
 
-      // Convert speed + dir to u/v
+      // Convert speed + dir to u/v (캐시 공유로 speed/dir 같은 좌표 동일 호출)
       const grid: GridUV[] = speedRes.map((s, i) => {
         const dir = dirRes[i]?.value ?? null;
         const speed = s.value;
@@ -94,11 +98,16 @@ export function WindParticles({ map, hourOffset }: Props) {
     }
 
     load();
-    const onMoveEnd = () => load();
+    let debounce: ReturnType<typeof setTimeout> | null = null;
+    const onMoveEnd = () => {
+      if (debounce) clearTimeout(debounce);
+      debounce = setTimeout(load, 500);
+    };
     map.on("moveend", onMoveEnd);
 
     return () => {
       alive = false;
+      if (debounce) clearTimeout(debounce);
       map.off("moveend", onMoveEnd);
     };
   }, [map, hourOffset]);
@@ -177,9 +186,9 @@ export function WindParticles({ map, hourOffset }: Props) {
 
         // Speed → color brightness
         const speed = Math.hypot(u, v);
-        const alpha = Math.min(0.9, 0.3 + speed / 20);
-        g.strokeStyle = `rgba(220, 240, 255, ${alpha})`;
-        g.lineWidth = 1.2;
+        const alpha = Math.min(0.7, 0.25 + speed / 25);
+        g.strokeStyle = `rgba(255, 255, 255, ${alpha})`;
+        g.lineWidth = 0.9;
         g.beginPath();
         g.moveTo(p1.x, p1.y);
         g.lineTo(p2.x, p2.y);

@@ -17,8 +17,10 @@ type Props = {
   hourOffset: number;
 };
 
-/** viewport 안에서 균등 격자 좌표 생성 (한반도 영역 대상 stepDeg ~ 0.5°) */
-function makeGrid(bounds: mapboxgl.LngLatBounds, stepDeg = 0.5): LngLat[] {
+/** viewport 안에서 균등 격자 좌표 생성 — zoom-aware step (최대 100 포인트로 제한) */
+function makeGrid(bounds: mapboxgl.LngLatBounds, zoom: number): LngLat[] {
+  // zoom 별 step: 줌인하면 더 촘촘, 줌아웃하면 듬성듬성
+  const stepDeg = zoom >= 7 ? 0.6 : zoom >= 5 ? 1.5 : 3.0;
   const sw = bounds.getSouthWest();
   const ne = bounds.getNorthEast();
   const pts: LngLat[] = [];
@@ -26,6 +28,11 @@ function makeGrid(bounds: mapboxgl.LngLatBounds, stepDeg = 0.5): LngLat[] {
     for (let lng = sw.lng; lng <= ne.lng; lng += stepDeg) {
       pts.push({ lng, lat });
     }
+  }
+  // Hard cap — 100 포인트 초과 시 자동 thinning
+  if (pts.length > 100) {
+    const skip = Math.ceil(pts.length / 100);
+    return pts.filter((_, i) => i % skip === 0);
   }
   return pts;
 }
@@ -62,7 +69,8 @@ function renderToCanvas(
         img.data[idx]     = r;
         img.data[idx + 1] = g;
         img.data[idx + 2] = b;
-        img.data[idx + 3] = 180;
+        // Canvas alpha — 컬러는 살리되 지도가 보이도록 130 (51%)
+        img.data[idx + 3] = 130;
       }
     }
   }
@@ -91,7 +99,7 @@ export function LayerRenderer({ map, layer, hourOffset }: Props) {
         setLoading(false);
         return;
       }
-      const grid = makeGrid(bounds, 0.5);
+      const grid = makeGrid(bounds, map.getZoom());
 
       try {
         const result = await fetchGrid(grid, def!.variable!, hourOffset, ctrl.signal);
@@ -117,15 +125,23 @@ export function LayerRenderer({ map, layer, hourOffset }: Props) {
           url: dataUrl,
           coordinates: coords,
         });
+        // 첫 라벨 레이어 위에 ← 국가/도시 이름이 컬러 위로 보이게
+        const style = map.getStyle();
+        const firstSymbol = style?.layers?.find((l) => l.type === "symbol")?.id;
+
         map.addLayer({
           id: LAYER_RASTER_ID,
           type: "raster",
           source: LAYER_SOURCE_ID,
           paint: {
             "raster-fade-duration": 300,
-            "raster-opacity": 0.78,
+            // Windy 스타일 — 지도 가시성 + 컬러 강도 양립
+            "raster-opacity": 0.55,
+            "raster-saturation": 0.35,   // 색 진하게
+            "raster-contrast":   0.15,    // 살짝 또렷
+            "raster-resampling": "linear",
           },
-        });
+        }, firstSymbol);
       } catch {
         // silenced
       } finally {
@@ -135,12 +151,18 @@ export function LayerRenderer({ map, layer, hourOffset }: Props) {
 
     load();
 
-    const onMoveEnd = () => load();
+    // moveend 가 너무 자주 발생 — 500ms debounce
+    let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+    const onMoveEnd = () => {
+      if (debounceTimer) clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(() => load(), 500);
+    };
     map.on("moveend", onMoveEnd);
 
     return () => {
       alive = false;
       ctrl.abort();
+      if (debounceTimer) clearTimeout(debounceTimer);
       map.off("moveend", onMoveEnd);
       if (map.getLayer(LAYER_RASTER_ID)) map.removeLayer(LAYER_RASTER_ID);
       if (map.getSource(LAYER_SOURCE_ID)) map.removeSource(LAYER_SOURCE_ID);
