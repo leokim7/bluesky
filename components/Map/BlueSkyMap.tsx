@@ -6,7 +6,10 @@ import "mapbox-gl/dist/mapbox-gl.css";
 import { ClickPopup } from "@/components/Popup/ClickPopup";
 import { WindParticles } from "@/components/Map/WindParticles";
 import { LayerRenderer } from "@/components/Map/LayerRenderer";
+import { VenueMarkers } from "@/components/Map/VenueMarkers";
 import type { LayerId, ModelId } from "@/lib/types";
+import type { ActivityId } from "@/lib/activities";
+import type { Venue } from "@/lib/venues";
 
 const MAPBOX_TOKEN = process.env.NEXT_PUBLIC_MAPBOX_TOKEN ?? "";
 mapboxgl.accessToken = MAPBOX_TOKEN;
@@ -16,9 +19,11 @@ type Props = {
   activeModel: ModelId;
   hourOffset: number;
   particlesOn: boolean;
+  activeActivity: ActivityId | null;
+  onVenueClick: (v: Venue) => void;
 };
 
-export function BlueSkyMap({ activeLayer, hourOffset, particlesOn }: Props) {
+export function BlueSkyMap({ activeLayer, hourOffset, particlesOn, activeActivity, onVenueClick }: Props) {
   const mapRef = useRef<mapboxgl.Map | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [mapReady, setMapReady] = useState(false);
@@ -74,6 +79,15 @@ export function BlueSkyMap({ activeLayer, hourOffset, particlesOn }: Props) {
       {/* Wind particles (only when wind/gust active + toggle on) */}
       {mapReady && mapRef.current && particlesOn && (activeLayer === "wind" || activeLayer === "gust") && (
         <WindParticles map={mapRef.current} hourOffset={hourOffset} />
+      )}
+
+      {/* Venue markers (when activity selected) */}
+      {mapReady && mapRef.current && (
+        <VenueMarkers
+          map={mapRef.current}
+          activity={activeActivity}
+          onVenueClick={onVenueClick}
+        />
       )}
 
       {/* Click popup */}
