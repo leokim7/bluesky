@@ -1,0 +1,111 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Pretendard via CDN */
+@import url("https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/static/pretendard.min.css");
+
+html, body, #__next {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  background: #0A0F1A;
+  color: #E2E8F0;
+  font-family: "Pretendard", system-ui, -apple-system, sans-serif;
+  overflow: hidden;
+}
+
+/* Mapbox base override */
+.mapboxgl-ctrl-attrib {
+  background: rgba(15, 23, 42, 0.6) !important;
+  color: #94A3B8 !important;
+}
+.mapboxgl-ctrl-attrib a { color: #94A3B8 !important; }
+.mapboxgl-ctrl-bottom-left,
+.mapboxgl-ctrl-bottom-right { display: none !important; }
+
+/* Custom layer particle canvas */
+.particle-canvas {
+  position: absolute;
+  top: 0; left: 0;
+  width: 100%; height: 100%;
+  pointer-events: none;
+  mix-blend-mode: screen;
+}
+
+/* Sidebar layer button */
+.layer-btn {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 8px 12px;
+  border-radius: 8px;
+  font-size: 13px;
+  color: #CBD5E1;
+  background: rgba(26, 34, 51, 0.6);
+  border: 1px solid rgba(255,255,255,0.04);
+  cursor: pointer;
+  transition: background 0.12s, transform 0.08s;
+}
+.layer-btn:hover { background: rgba(26, 34, 51, 0.95); }
+.layer-btn.is-active {
+  background: linear-gradient(135deg, #065A82, #0891B2);
+  color: #FFFFFF;
+  border-color: #06B6D4;
+  box-shadow: 0 0 0 2px rgba(6, 182, 212, 0.18);
+}
+.layer-btn.is-locked {
+  background: rgba(20, 26, 38, 0.4);
+  color: #64748B;
+  cursor: not-allowed;
+}
+.layer-btn .icon-wrap {
+  width: 24px; height: 24px;
+  display: inline-flex; align-items: center; justify-content: center;
+  border-radius: 50%;
+  background: rgba(255,255,255,0.05);
+}
+
+/* Timeline scrubber */
+.timeline-track {
+  background: linear-gradient(90deg, #1A2233 0%, #243144 100%);
+  border-radius: 10px;
+  padding: 8px 12px;
+}
+
+.timeline-tick {
+  font-size: 10px;
+  color: #64748B;
+  letter-spacing: 0.04em;
+}
+
+.timeline-tick.is-now {
+  color: #06B6D4;
+  font-weight: 600;
+}
+
+/* Search box */
+.search-box {
+  background: rgba(15, 23, 42, 0.85);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255,255,255,0.06);
+  border-radius: 999px;
+}
+
+/* Legend bar */
+.legend-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 10px;
+  color: #94A3B8;
+  background: rgba(15, 23, 42, 0.8);
+  backdrop-filter: blur(8px);
+  border-radius: 8px;
+  padding: 6px 10px;
+}
+.legend-swatch {
+  width: 18px; height: 12px;
+  border-radius: 2px;
+}
