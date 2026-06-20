@@ -41,11 +41,15 @@ export function VenueMarkers({ map, activity, onVenueClick }: Props) {
     if (!act) return;
 
     venues.forEach((v) => {
-      // Custom marker DOM
-      const el = document.createElement("div");
-      el.className = "venue-marker";
-      el.style.cssText = `
-        width: 28px; height: 28px;
+      // Wrapper — Mapbox 가 translate 로 위치 잡는 컨테이너 (transform 건드리지 말 것)
+      const wrapper = document.createElement("div");
+      wrapper.style.cssText = "width: 28px; height: 28px; cursor: pointer;";
+
+      // Inner — 시각 요소. scale 등 transform 자유롭게 사용 가능
+      const inner = document.createElement("div");
+      inner.className = "venue-marker";
+      inner.style.cssText = `
+        width: 100%; height: 100%;
         background: ${act.color};
         border: 2px solid #FFFFFF;
         border-radius: 50%;
@@ -55,25 +59,28 @@ export function VenueMarkers({ map, activity, onVenueClick }: Props) {
         color: #0A0F1A;
         font-weight: 700;
         font-size: 11px;
-        cursor: pointer;
         box-shadow: 0 2px 8px rgba(0,0,0,0.4);
-        transition: transform 0.15s ease;
+        transition: transform 0.15s ease, box-shadow 0.15s ease;
+        transform-origin: center center;
       `;
-      el.textContent = v.name.charAt(0);
-      el.title = v.name;
+      inner.textContent = v.name.charAt(0);
+      wrapper.title = v.name;
+      wrapper.appendChild(inner);
 
-      el.addEventListener("mouseenter", () => {
-        el.style.transform = "scale(1.15)";
+      wrapper.addEventListener("mouseenter", () => {
+        inner.style.transform = "scale(1.18)";
+        inner.style.boxShadow = `0 4px 14px ${act.color}80, 0 2px 8px rgba(0,0,0,0.5)`;
       });
-      el.addEventListener("mouseleave", () => {
-        el.style.transform = "scale(1)";
+      wrapper.addEventListener("mouseleave", () => {
+        inner.style.transform = "scale(1)";
+        inner.style.boxShadow = "0 2px 8px rgba(0,0,0,0.4)";
       });
-      el.addEventListener("click", (e) => {
+      wrapper.addEventListener("click", (e) => {
         e.stopPropagation();
         onVenueClick(v);
       });
 
-      const marker = new mapboxgl.Marker({ element: el })
+      const marker = new mapboxgl.Marker({ element: wrapper })
         .setLngLat([v.lon, v.lat])
         .addTo(map);
       markersRef.current.push(marker);

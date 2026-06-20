@@ -13,27 +13,36 @@ export type Venue = {
   description?: string;
 };
 
-const ADMIN_URL =
-  process.env.NEXT_PUBLIC_ADMIN_API_URL ?? "https://admin-dev.bmatrix.io";
-
 // ── In-memory cache ─────────────────────────────────
-const CACHE = new Map<ActivityId, { ts: number; venues: Venue[] }>();
+const CACHE = new Map<ActivityId, { ts: number; venues: Venue[]; source: string }>();
 const CACHE_TTL = 30 * 60 * 1000; // 30 분
 
-/** Admin API 에서 활동별 venue 조회. 실패 시 fallback 사용. */
+/**
+ * 활동별 venue 조회.
+ *   1. 메모리 캐시 hit → 즉시
+ *   2. bluesky internal /api/venues (서버 측에서 admin API 호출)
+ *   3. admin 실패 / 키 미설정 → fallback 하드코딩
+ */
 export async function fetchVenuesByActivity(activity: ActivityId): Promise<Venue[]> {
   const cached = CACHE.get(activity);
   if (cached && Date.now() - cached.ts < CACHE_TTL) return cached.venues;
 
   try {
-    const res = await fetch(`${ADMIN_URL}/api/public/venues?activity=${activity}`, {
-      next: { revalidate: 1800 },
+    const res = await fetch(`/api/venues?activity=${activity}`, {
+      cache: "no-store",
     });
     if (res.ok) {
-      const j = (await res.json()) as { venues?: Venue[] };
-      const venues = (j.venues ?? []).map((v) => ({ ...v, activity }));
-      if (venues.length > 0) {
-        CACHE.set(activity, { ts: Date.now(), venues });
+      const j = (await res.json()) as { venues?: Array<{ id: string; name: string; activity: string; lat: number; lon: number; address?: string | null }>; source?: string };
+      if (j.venues && j.venues.length > 0) {
+        const venues: Venue[] = j.venues.map((v) => ({
+          id: v.id,
+          name: v.name,
+          activity: v.activity as ActivityId,
+          lat: v.lat,
+          lon: v.lon,
+          address: v.address ?? undefined,
+        }));
+        CACHE.set(activity, { ts: Date.now(), venues, source: j.source ?? "admin" });
         return venues;
       }
     }
@@ -41,8 +50,13 @@ export async function fetchVenuesByActivity(activity: ActivityId): Promise<Venue
     // continue to fallback
   }
   const venues = FALLBACK_VENUES[activity] ?? [];
-  CACHE.set(activity, { ts: Date.now(), venues });
+  CACHE.set(activity, { ts: Date.now(), venues, source: "fallback" });
   return venues;
+}
+
+/** 현재 캐시의 데이터 출처 (디버깅용) */
+export function getVenueSource(activity: ActivityId): string {
+  return CACHE.get(activity)?.source ?? "unknown";
 }
 
 // ── Fallback / Seed venues (admin API 없을 때) ──────
